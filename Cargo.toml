@@ -1,0 +1,7 @@
+[package]
+name = "camera_calibrate"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+opencv = { version = "0.94.2", features = ["imgproc", "calib3d", "highgui"] }
