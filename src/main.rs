@@ -191,7 +191,10 @@ fn compute_reprojection_error(
             &mut jacobian,
             0.0,
         )?;
-        let error = core::norm(&img_points.get(i)?, core::NORM_L2, &img_points2)?;
+
+        let img_points_vec = img_points.get(i)?.to_vec();
+        let error = core::norm(&Mat::from_slice(&img_points_vec)?
+            .reshape(1, img_points_vec.len() as i32)?, core::NORM_L2, &Mat::default())?;
         mean_error += error;
     }
 
