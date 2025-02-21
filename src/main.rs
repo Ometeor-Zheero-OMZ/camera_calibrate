@@ -1,17 +1,25 @@
+use std::fs;
+use std::path::Path;
+use std::time::Instant;
+
 use opencv::{
     calib3d,
     core::{self, Mat, Point2f, Point3f, Size, Vector},
     highgui, imgcodecs, imgproc, prelude::*,
 };
-use std::fs;
-use std::path::Path;
+
+use json::{CameraCalibration, CameraCalibrationTrait};
+mod json;
 
 const FILE_FORMAT: &str = "jpeg";
 const UNDISTORT_IMG_PATH: &str = "./img/calib4.jpeg";
 const RESULT_IMG_PATH: &str = "./out/result.jpeg";
+const JSON_PATH: &str = "./out/calibration.json";
 
 fn main() -> opencv::Result<()> {
     create_out_dir();
+
+    let start_time = Instant::now();
 
     let chessboard_size = Size::new(9, 6);
     let frame_size = Size::new(1440, 1080);
@@ -32,6 +40,13 @@ fn main() -> opencv::Result<()> {
 
     let error = compute_reprojection_error(&obj_points, &img_points, &rvecs, &tvecs, &camera_matrix, &dist_coeffs)?;
     println!("Total Error: {}", error);
+
+    if let Err(e) = CameraCalibration::save_to_json(&camera_matrix, &dist_coeffs, &rvecs, &tvecs, error, JSON_PATH) {
+        eprintln!("Failed to save to json: {}", e);
+    }
+
+    let duration = start_time.elapsed();
+    println!("Processing time: {:?}", duration);
 
     Ok(())
 }
@@ -137,6 +152,8 @@ fn calibrate_camera(
         criteria,
     )?;
 
+    // I leave this output because it may be useful for future cases where
+    // the program needs to handle numerical values with extremely high precision such as microscopes.
     println!("Camera Calibrated: {}", ret);
     println!("Camera Matrix:\n{:?}", camera_matrix);
     println!("Distortion Parameters:\n{:?}", dist_coeffs);
@@ -191,7 +208,10 @@ fn compute_reprojection_error(
             &mut jacobian,
             0.0,
         )?;
-        let error = core::norm(&img_points.get(i)?, core::NORM_L2, &img_points2)?;
+
+        let img_points_vec = img_points.get(i)?.to_vec();
+        let error = core::norm(&Mat::from_slice(&img_points_vec)?
+            .reshape(1, img_points_vec.len() as i32)?, core::NORM_L2, &Mat::default())?;
         mean_error += error;
     }
 
