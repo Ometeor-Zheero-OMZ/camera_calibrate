@@ -6,7 +6,7 @@ I'm a beginner at a computer vision, so sill learn this field.
 
 ## Pictures
 
-I shoot some pictures of a chessboard from many angles up to 14.
+I took some pictures of a chessboard from many angles up to 14.
 
 If you tru to calibrate your camera, I recommend you to gather more than 20 pictures according to a common camera calibration pattern.
 
