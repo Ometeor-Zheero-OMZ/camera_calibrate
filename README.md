@@ -10,8 +10,6 @@ I took multiple pictures of a chessboard from different angles, up to 14 in tota
 
 If you want to calibrate your camera, I recommend capturing at least 20 images, as suggested by standard camera calibration methods.
 
-The input and output shown below are expected to remain unchanged.
-
 I assume that the dataset I used is not ideal for this demo.
 
 I probably need more distorted images, like this:
@@ -19,6 +17,8 @@ I probably need more distorted images, like this:
 ![sample](https://github.com/user-attachments/assets/91944157-fed6-4ba1-930a-6deeb632c476)
 
 ## Before
+
+The input and output shown below are expected to remain unchanged.
 
 ![補正前](./img/calib4.jpeg)
 
