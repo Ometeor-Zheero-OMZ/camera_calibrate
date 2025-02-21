@@ -1,20 +1,20 @@
 # Camera Calibration
 
-This is a camera calibration demo.
+This is a demo for camera calibration.
 
-I'm a beginner at a computer vision, so sill learn this field.
+I'm a beginner in computer vision and still learning about this field.
 
 ## Pictures
 
-I took some pictures of a chessboard from many angles up to 14.
+I took multiple pictures of a chessboard from different angles, up to 14 in total.
 
-If you tru to calibrate your camera, I recommend you to gather more than 20 pictures according to a common camera calibration pattern.
+If you want to calibrate your camera, I recommend capturing at least 20 images, as suggested by standard camera calibration methods.
 
-And these input and output down below mightn't be changed.
+The input and output shown below are expected to remain unchanged.
 
-I assume that dataset that I used is not a appropriate for this demo. 
+I assume that the dataset I used is not ideal for this demo.
 
-Probably, I need more distorted pictures like this:
+I probably need more distorted images, like this:
 
 ![sample](https://github.com/user-attachments/assets/91944157-fed6-4ba1-930a-6deeb632c476)
 
