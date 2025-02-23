@@ -11,6 +11,7 @@ use opencv::{
     imgproc,
     prelude::*,
 };
+use rayon::prelude::*;
 
 use crate::{RESULT_IMG_PATH, UNDISTORT_IMG_PATH};
 
@@ -184,28 +185,40 @@ impl CameraCalibrationTrait for CameraCalibration {
         camera_matrix: &Mat,
         dist_coeffs: &Mat,
     ) -> opencv::Result<f64> {
-        let mut mean_error = 0.0;
-        for i in 0..obj_points.len() {
-            let mut img_points2 = Vector::<Point2f>::new();
-            let mut jacobian = Mat::default();
-            calib3d::project_points(
-                &obj_points.get(i)?,
-                &rvecs.get(i)?,
-                &tvecs.get(i)?,
-                camera_matrix,
-                dist_coeffs,
-                &mut img_points2,
-                &mut jacobian,
-                0.0,
-            )?;
+        let errors: Vec<f64> = (0..obj_points.len())
+            .into_par_iter()
+            .map(|i| {
+                let mut img_points2 = Vector::<Point2f>::new();
+                let mut jacobian = Mat::default();
 
-            let img_points_vec = img_points.get(i)?.to_vec();
-            let error = core::norm(&Mat::from_slice(&img_points_vec)?
-                .reshape(1, img_points_vec.len() as i32)?, core::NORM_L2, &Mat::default())?;
-            mean_error += error;
-        }
+                if calib3d::project_points(
+                    &obj_points.get(i).unwrap(),
+                    &rvecs.get(i).unwrap(),
+                    &tvecs.get(i).unwrap(),
+                    camera_matrix,
+                    dist_coeffs,
+                    &mut img_points2,
+                    &mut jacobian,
+                    0.0,
+                ).is_err() {
+                    return 0.0;
+                }
 
-        Ok(mean_error / obj_points.len() as f64)
+                let img_points_vec = img_points.get(i).unwrap().to_vec();
+                if let Ok(norm) = core::norm(
+                    &Mat::from_slice(&img_points_vec).unwrap().reshape(1, img_points_vec.len() as i32).unwrap(),
+                    core::NORM_L2,
+                    &Mat::default(),
+                ) {
+                    norm
+                } else {
+                    0.0
+                }
+            })
+            .collect();
+
+        let mean_error = errors.iter().sum::<f64>() / obj_points.len() as f64;
+        Ok(mean_error)
     }
 
     fn save_to_json(
