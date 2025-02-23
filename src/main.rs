@@ -12,7 +12,7 @@ mod camera_calibration;
 mod file;
 
 const FILE_FORMAT: &str = "jpeg";
-const UNDISTORT_IMG_PATH: &str = "./img/calib4.jpeg";
+const UNDISTORT_IMG_PATH: &str = "./img/calib02.jpeg";
 const RESULT_IMG_PATH: &str = "./out/result.jpeg";
 const JSON_PATH: &str = "./out/calibration.json";
 
