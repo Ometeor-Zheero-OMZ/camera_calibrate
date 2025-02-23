@@ -11,6 +11,7 @@ use opencv::{
     imgproc,
     prelude::*,
 };
+use rayon::prelude::*;
 
 use crate::{RESULT_IMG_PATH, UNDISTORT_IMG_PATH};
 
@@ -75,18 +76,18 @@ impl CameraCalibrationTrait for CameraCalibration {
                 objp.push(Point3f::new(j as f32, i as f32, 0.0));
             }
         }
-
+    
         let mut obj_points = Vector::<Vector<Point3f>>::new();
         let mut img_points = Vector::<Vector<Point2f>>::new();
-
+    
         highgui::named_window("img", highgui::WINDOW_NORMAL)?;
         highgui::resize_window("img", 800, 600)?;
-
+    
         for image_path in image_paths {
             let img = imgcodecs::imread(image_path.to_str().unwrap(), imgcodecs::IMREAD_COLOR)?;
             let mut gray = Mat::default();
             imgproc::cvt_color(&img, &mut gray, imgproc::COLOR_BGR2GRAY, 0)?;
-
+    
             let mut corners = Vector::<Point2f>::new();
             let found = calib3d::find_chessboard_corners(
                 &gray,
@@ -96,10 +97,10 @@ impl CameraCalibrationTrait for CameraCalibration {
                     | calib3d::CALIB_CB_FAST_CHECK
                     | calib3d::CALIB_CB_NORMALIZE_IMAGE,
             )?;
-
+    
             if found {
                 obj_points.push(objp.clone());
-
+    
                 let mut refined_corners = corners.clone();
                 imgproc::corner_sub_pix(
                     &gray,
@@ -109,14 +110,26 @@ impl CameraCalibrationTrait for CameraCalibration {
                     criteria,
                 )?;
                 img_points.push(refined_corners);
-
+    
                 let mut img_clone = img.clone();
                 calib3d::draw_chessboard_corners(&mut img_clone, chessboard_size, &corners, found)?;
+    
+                // Read each file and display the filename on the window
+                if let Some(filename) = image_path.file_name().and_then(|f| f.to_str()) {
+                    let text = format!("{}", filename);
+                    let org = core::Point::new(10, 100);
+                    let font_face = imgproc::FONT_HERSHEY_SIMPLEX;
+                    let font_scale = 3.0;
+                    let color = core::Scalar::new(0.0, 255.0, 0.0, 0.0); // GREEN TEXT
+                    let thickness = 2;
+                    imgproc::put_text(&mut img_clone, &text, org, font_face, font_scale, color, thickness, imgproc::LINE_AA, false)?;
+                }
+    
                 highgui::imshow("img", &img_clone)?;
                 highgui::wait_key(1000)?;
             }
         }
-
+    
         highgui::destroy_all_windows()?;
         Ok((obj_points, img_points))
     }
@@ -184,28 +197,40 @@ impl CameraCalibrationTrait for CameraCalibration {
         camera_matrix: &Mat,
         dist_coeffs: &Mat,
     ) -> opencv::Result<f64> {
-        let mut mean_error = 0.0;
-        for i in 0..obj_points.len() {
-            let mut img_points2 = Vector::<Point2f>::new();
-            let mut jacobian = Mat::default();
-            calib3d::project_points(
-                &obj_points.get(i)?,
-                &rvecs.get(i)?,
-                &tvecs.get(i)?,
-                camera_matrix,
-                dist_coeffs,
-                &mut img_points2,
-                &mut jacobian,
-                0.0,
-            )?;
+        let errors: Vec<f64> = (0..obj_points.len())
+            .into_par_iter()
+            .map(|i| {
+                let mut img_points2 = Vector::<Point2f>::new();
+                let mut jacobian = Mat::default();
 
-            let img_points_vec = img_points.get(i)?.to_vec();
-            let error = core::norm(&Mat::from_slice(&img_points_vec)?
-                .reshape(1, img_points_vec.len() as i32)?, core::NORM_L2, &Mat::default())?;
-            mean_error += error;
-        }
+                if calib3d::project_points(
+                    &obj_points.get(i).unwrap(),
+                    &rvecs.get(i).unwrap(),
+                    &tvecs.get(i).unwrap(),
+                    camera_matrix,
+                    dist_coeffs,
+                    &mut img_points2,
+                    &mut jacobian,
+                    0.0,
+                ).is_err() {
+                    return 0.0;
+                }
 
-        Ok(mean_error / obj_points.len() as f64)
+                let img_points_vec = img_points.get(i).unwrap().to_vec();
+                if let Ok(norm) = core::norm(
+                    &Mat::from_slice(&img_points_vec).unwrap().reshape(1, img_points_vec.len() as i32).unwrap(),
+                    core::NORM_L2,
+                    &Mat::default(),
+                ) {
+                    norm
+                } else {
+                    0.0
+                }
+            })
+            .collect();
+
+        let mean_error = errors.iter().sum::<f64>() / obj_points.len() as f64;
+        Ok(mean_error)
     }
 
     fn save_to_json(
