@@ -13,7 +13,20 @@ use opencv::{
 };
 use rayon::prelude::*;
 
-use crate::{RESULT_IMG_PATH, UNDISTORT_IMG_PATH};
+use crate::{
+    CORNER_SUB_PIX_WINDOW_HEIGHT,
+    CORNER_SUB_PIX_WINDOW_WIDTH,
+    CORNER_SUB_PIX_ZERO_ZONE,
+    GUI_WINDOW_HEIGHT,
+    GUI_WINDOW_WIDTH,
+    RESULT_IMG_PATH,
+    TEXT_COLOR,
+    TEXT_FONT_SCALE,
+    TEXT_POINT,
+    UNDISTORT_IMG_PATH,
+    WAIT_KEY_DELAY,
+    WINDOW_TITLE
+};
 
 #[derive(Serialize, Deserialize)]
 pub struct CameraCalibration {
@@ -80,8 +93,8 @@ impl CameraCalibrationTrait for CameraCalibration {
         let mut obj_points = Vector::<Vector<Point3f>>::new();
         let mut img_points = Vector::<Vector<Point2f>>::new();
     
-        highgui::named_window("img", highgui::WINDOW_NORMAL)?;
-        highgui::resize_window("img", 800, 600)?;
+        highgui::named_window(WINDOW_TITLE, highgui::WINDOW_NORMAL)?;
+        highgui::resize_window(WINDOW_TITLE, GUI_WINDOW_WIDTH, GUI_WINDOW_HEIGHT)?;
     
         for image_path in image_paths {
             let img = imgcodecs::imread(image_path.to_str().unwrap(), imgcodecs::IMREAD_COLOR)?;
@@ -105,8 +118,8 @@ impl CameraCalibrationTrait for CameraCalibration {
                 imgproc::corner_sub_pix(
                     &gray,
                     &mut refined_corners,
-                    Size::new(11, 11),
-                    Size::new(-1, -1),
+                    Size::new(CORNER_SUB_PIX_WINDOW_WIDTH, CORNER_SUB_PIX_WINDOW_HEIGHT),
+                    Size::new(CORNER_SUB_PIX_ZERO_ZONE, CORNER_SUB_PIX_ZERO_ZONE),
                     criteria,
                 )?;
                 img_points.push(refined_corners);
@@ -117,16 +130,16 @@ impl CameraCalibrationTrait for CameraCalibration {
                 // Read each file and display the filename on the window
                 if let Some(filename) = image_path.file_name().and_then(|f| f.to_str()) {
                     let text = format!("{}", filename);
-                    let org = core::Point::new(10, 100);
+                    let org = core::Point::new(TEXT_POINT.0, TEXT_POINT.1);
                     let font_face = imgproc::FONT_HERSHEY_SIMPLEX;
-                    let font_scale = 3.0;
-                    let color = core::Scalar::new(0.0, 255.0, 0.0, 0.0); // GREEN TEXT
+                    let font_scale = TEXT_FONT_SCALE;
+                    let color = core::Scalar::new(TEXT_COLOR.0, TEXT_COLOR.1, TEXT_COLOR.2, TEXT_COLOR.3);
                     let thickness = 2;
                     imgproc::put_text(&mut img_clone, &text, org, font_face, font_scale, color, thickness, imgproc::LINE_AA, false)?;
                 }
     
-                highgui::imshow("img", &img_clone)?;
-                highgui::wait_key(1000)?;
+                highgui::imshow(WINDOW_TITLE, &img_clone)?;
+                highgui::wait_key(WAIT_KEY_DELAY)?;
             }
         }
     
@@ -202,8 +215,8 @@ impl CameraCalibrationTrait for CameraCalibration {
             .map(|i| {
                 let mut img_points2 = Vector::<Point2f>::new();
                 let mut jacobian = Mat::default();
-
-                if calib3d::project_points(
+    
+                if let Ok(_) = calib3d::project_points(
                     &obj_points.get(i).unwrap(),
                     &rvecs.get(i).unwrap(),
                     &tvecs.get(i).unwrap(),
@@ -212,23 +225,26 @@ impl CameraCalibrationTrait for CameraCalibration {
                     &mut img_points2,
                     &mut jacobian,
                     0.0,
-                ).is_err() {
-                    return 0.0;
-                }
-
-                let img_points_vec = img_points.get(i).unwrap().to_vec();
-                if let Ok(norm) = core::norm(
-                    &Mat::from_slice(&img_points_vec).unwrap().reshape(1, img_points_vec.len() as i32).unwrap(),
-                    core::NORM_L2,
-                    &Mat::default(),
                 ) {
-                    norm
+                    // 実測点と投影点の差分を計算
+                    let diff: Vec<Point2f> = img_points.get(i).unwrap()
+                        .iter()
+                        .zip(img_points2.iter())
+                        .map(|(p1, p2)| Point2f::new(p1.x - p2.x, p1.y - p2.y))
+                        .collect();
+    
+                    // 二乗平均平方根誤差を計算
+                    let squared_errors: f64 = diff.iter()
+                        .map(|p| (p.x * p.x + p.y * p.y) as f64)
+                        .sum();
+                    
+                    (squared_errors / diff.len() as f64).sqrt()
                 } else {
                     0.0
                 }
             })
             .collect();
-
+    
         let mean_error = errors.iter().sum::<f64>() / obj_points.len() as f64;
         Ok(mean_error)
     }
