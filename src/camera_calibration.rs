@@ -202,8 +202,8 @@ impl CameraCalibrationTrait for CameraCalibration {
             .map(|i| {
                 let mut img_points2 = Vector::<Point2f>::new();
                 let mut jacobian = Mat::default();
-
-                if calib3d::project_points(
+    
+                if let Ok(_) = calib3d::project_points(
                     &obj_points.get(i).unwrap(),
                     &rvecs.get(i).unwrap(),
                     &tvecs.get(i).unwrap(),
@@ -212,23 +212,26 @@ impl CameraCalibrationTrait for CameraCalibration {
                     &mut img_points2,
                     &mut jacobian,
                     0.0,
-                ).is_err() {
-                    return 0.0;
-                }
-
-                let img_points_vec = img_points.get(i).unwrap().to_vec();
-                if let Ok(norm) = core::norm(
-                    &Mat::from_slice(&img_points_vec).unwrap().reshape(1, img_points_vec.len() as i32).unwrap(),
-                    core::NORM_L2,
-                    &Mat::default(),
                 ) {
-                    norm
+                    // 実測点と投影点の差分を計算
+                    let diff: Vec<Point2f> = img_points.get(i).unwrap()
+                        .iter()
+                        .zip(img_points2.iter())
+                        .map(|(p1, p2)| Point2f::new(p1.x - p2.x, p1.y - p2.y))
+                        .collect();
+    
+                    // 二乗平均平方根誤差を計算
+                    let squared_errors: f64 = diff.iter()
+                        .map(|p| (p.x * p.x + p.y * p.y) as f64)
+                        .sum();
+                    
+                    (squared_errors / diff.len() as f64).sqrt()
                 } else {
                     0.0
                 }
             })
             .collect();
-
+    
         let mean_error = errors.iter().sum::<f64>() / obj_points.len() as f64;
         Ok(mean_error)
     }
