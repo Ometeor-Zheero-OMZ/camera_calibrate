@@ -76,18 +76,18 @@ impl CameraCalibrationTrait for CameraCalibration {
                 objp.push(Point3f::new(j as f32, i as f32, 0.0));
             }
         }
-
+    
         let mut obj_points = Vector::<Vector<Point3f>>::new();
         let mut img_points = Vector::<Vector<Point2f>>::new();
-
+    
         highgui::named_window("img", highgui::WINDOW_NORMAL)?;
         highgui::resize_window("img", 800, 600)?;
-
+    
         for image_path in image_paths {
             let img = imgcodecs::imread(image_path.to_str().unwrap(), imgcodecs::IMREAD_COLOR)?;
             let mut gray = Mat::default();
             imgproc::cvt_color(&img, &mut gray, imgproc::COLOR_BGR2GRAY, 0)?;
-
+    
             let mut corners = Vector::<Point2f>::new();
             let found = calib3d::find_chessboard_corners(
                 &gray,
@@ -97,10 +97,10 @@ impl CameraCalibrationTrait for CameraCalibration {
                     | calib3d::CALIB_CB_FAST_CHECK
                     | calib3d::CALIB_CB_NORMALIZE_IMAGE,
             )?;
-
+    
             if found {
                 obj_points.push(objp.clone());
-
+    
                 let mut refined_corners = corners.clone();
                 imgproc::corner_sub_pix(
                     &gray,
@@ -110,14 +110,26 @@ impl CameraCalibrationTrait for CameraCalibration {
                     criteria,
                 )?;
                 img_points.push(refined_corners);
-
+    
                 let mut img_clone = img.clone();
                 calib3d::draw_chessboard_corners(&mut img_clone, chessboard_size, &corners, found)?;
+    
+                // Read each file and display the filename on the window
+                if let Some(filename) = image_path.file_name().and_then(|f| f.to_str()) {
+                    let text = format!("{}", filename);
+                    let org = core::Point::new(10, 100);
+                    let font_face = imgproc::FONT_HERSHEY_SIMPLEX;
+                    let font_scale = 3.0;
+                    let color = core::Scalar::new(0.0, 255.0, 0.0, 0.0); // GREEN TEXT
+                    let thickness = 2;
+                    imgproc::put_text(&mut img_clone, &text, org, font_face, font_scale, color, thickness, imgproc::LINE_AA, false)?;
+                }
+    
                 highgui::imshow("img", &img_clone)?;
                 highgui::wait_key(1000)?;
             }
         }
-
+    
         highgui::destroy_all_windows()?;
         Ok((obj_points, img_points))
     }
