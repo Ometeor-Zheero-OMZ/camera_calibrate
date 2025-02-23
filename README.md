@@ -20,7 +20,7 @@ I probably need more distorted images, like this:
 
 The input and output shown below are expected to remain unchanged.
 
-![補正前](./img/calib4.jpeg)
+![補正前](./img/calib04.jpeg)
 
 ## After
 
