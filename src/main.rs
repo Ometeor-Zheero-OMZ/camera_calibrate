@@ -13,9 +13,9 @@ mod file;
 
 // FILE
 const FILE_FORMAT: &str = "jpeg";
-const UNDISTORT_IMG_PATH: &str = "./img/calib04.jpeg";
-const RESULT_IMG_PATH: &str = "./out/result.jpeg";
-const JSON_PATH: &str = "./out/calibration.json";
+const UNDISTORT_IMG_PATH: &str = "./img/circle_grid_dataset/calib04.jpeg";
+const RESULT_IMG_PATH: &str = "./out/circle_grid/result.jpeg";
+const JSON_PATH: &str = "./out/circle_grid/calibration.json";
 
 // CAMERA CALIBRATION PARAMETERS
 const CHESSBOARD_SIZE: (i32, i32) = (9, 6);
@@ -39,19 +39,23 @@ const TEXT_FONT_SCALE: f64 = 3.0;
 const TEXT_COLOR: (f64, f64, f64, f64) = (0.0, 255.0, 0.0, 0.0); // GREEN
 
 fn main() -> opencv::Result<()> {
-    File::create_out_dir();
+    File::create_out_dir(None);
     let start_time = Instant::now();
 
     let chessboard_size = Size::new(CHESSBOARD_SIZE.0, CHESSBOARD_SIZE.1);
-    let image_paths = File::get_image_paths("./img/chessboard_dataset");
+    let image_paths = File::get_image_paths("./img/circle_grid_dataset");
     let criteria = TermCriteria::new(
         (TermCriteria_Type::COUNT as i32) + (TermCriteria_Type::EPS as i32),
         CRITERIA_MAX_COUNT,
         CRITERIA_EPS,
     )?;
 
+    // let (obj_points, img_points) =
+    //     CameraCalibration::detect_chessboard_corners(&image_paths, chessboard_size, criteria)?;
+
+    let mut read_image_cnt = 0;
     let (obj_points, img_points) =
-        CameraCalibration::detect_chessboard_corners(&image_paths, chessboard_size, criteria)?;
+        CameraCalibration::detect_circle_grid(&image_paths, chessboard_size, &mut read_image_cnt)?;
 
     let frame_size = Size::new(FRAME_WIDTH, FRAME_HEIGHT);
     let (camera_matrix, dist_coeffs, rvecs, tvecs) =

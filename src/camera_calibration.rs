@@ -4,16 +4,17 @@ use std::io::Write;
 use serde::{Serialize, Deserialize};
 use serde_json;
 use opencv::{
-    calib3d,
-    core::{self, Mat, Point2f, Point3f, Size, Vector},
+    calib3d, core::{self, Mat, Point2f, Point3f, Size, Vector},
+    features2d::{self, SimpleBlobDetector, SimpleBlobDetector_Params},
     highgui,
     imgcodecs,
     imgproc,
-    prelude::*,
+    prelude::*
 };
 use rayon::prelude::*;
 
 use crate::{
+    file::File as CustomFile,
     CORNER_SUB_PIX_WINDOW_HEIGHT,
     CORNER_SUB_PIX_WINDOW_WIDTH,
     CORNER_SUB_PIX_ZERO_ZONE,
@@ -43,6 +44,13 @@ pub trait CameraCalibrationTrait {
         image_paths: &[std::path::PathBuf],
         chessboard_size: Size,
         criteria: core::TermCriteria,
+    ) -> opencv::Result<(Vector<Vector<Point3f>>, Vector<Vector<Point2f>>)>;
+
+    /// 円グリッドのコーナー検出 & 精緻化
+    fn detect_circle_grid(
+        image_paths: &[std::path::PathBuf],
+        pattern_size: Size,
+        read_image_cnt: &mut i32
     ) -> opencv::Result<(Vector<Vector<Point3f>>, Vector<Vector<Point2f>>)>;
 
     /// カメラキャリブレーション
@@ -147,6 +155,79 @@ impl CameraCalibrationTrait for CameraCalibration {
         Ok((obj_points, img_points))
     }
 
+    fn detect_circle_grid(
+        image_paths: &[std::path::PathBuf],
+        pattern_size: Size,
+        read_image_cnt: &mut i32
+    ) -> opencv::Result<(Vector<Vector<Point3f>>, Vector<Vector<Point2f>>)> {
+        let mut objp = Vector::<Point3f>::new();
+        for i in 0..pattern_size.height {
+            for j in 0..pattern_size.width {
+                objp.push(Point3f::new(j as f32, i as f32, 0.0));
+            }
+        }
+
+        let mut obj_points = Vector::<Vector<Point3f>>::new();
+        let mut img_points = Vector::<Vector<Point2f>>::new();
+
+        highgui::named_window(WINDOW_TITLE, highgui::WINDOW_NORMAL)?;
+        highgui::resize_window(WINDOW_TITLE, GUI_WINDOW_WIDTH, GUI_WINDOW_HEIGHT)?;
+
+        for image_path in image_paths {
+            let img = imgcodecs::imread(image_path.to_str().unwrap(), imgcodecs::IMREAD_COLOR)?;
+            let mut gray = Mat::default();
+            let gray_clone = gray.clone();
+            imgproc::cvt_color(&img, &mut gray, imgproc::COLOR_BGR2GRAY, 0)?;
+            imgproc::equalize_hist(&gray_clone, &mut gray)?;
+
+            let mut centers = Vector::<Point2f>::new();
+
+            let params = SimpleBlobDetector_Params::default()?;
+            let blob_detector = SimpleBlobDetector::create(params)?;
+            let blob_detector_ptr: core::Ptr<features2d::Feature2D> = blob_detector.into();
+
+            let grid_params = calib3d::CirclesGridFinderParameters::default()?;
+
+            let found = calib3d::find_circles_grid(
+                &gray,
+                pattern_size,
+                &mut centers,
+                calib3d::CALIB_CB_SYMMETRIC_GRID,
+                Some(&blob_detector_ptr),
+                grid_params,
+            )?;
+
+            if found {
+                obj_points.push(objp.clone());
+                img_points.push(centers.clone());
+
+                let mut img_clone = img.clone();
+                calib3d::draw_chessboard_corners(&mut img_clone, pattern_size, &centers, found)?;
+
+                // Read each file and display the filename on the window
+                if let Some(filename) = image_path.file_name().and_then(|f| f.to_str()) {
+                    *read_image_cnt += 1;
+                    let text = format!("{}", filename);
+                    let org = core::Point::new(TEXT_POINT.0, TEXT_POINT.1);
+                    let font_face = imgproc::FONT_HERSHEY_SIMPLEX;
+                    let font_scale = TEXT_FONT_SCALE;
+                    let color = core::Scalar::new(TEXT_COLOR.0, TEXT_COLOR.1, TEXT_COLOR.2, TEXT_COLOR.3);
+                    let thickness = 2;
+                    imgproc::put_text(&mut img_clone, &text, org, font_face, font_scale, color, thickness, imgproc::LINE_AA, false)?;
+                }
+
+                highgui::imshow(WINDOW_TITLE, &img_clone)?;
+                highgui::wait_key(WAIT_KEY_DELAY)?;
+            } else {
+                eprintln!("Circles grid not found in image: {:?}", image_path);
+            }        
+        }
+
+        println!("Read {} images", read_image_cnt);
+        highgui::destroy_all_windows()?;
+        Ok((obj_points, img_points))
+    }
+
     fn calibrate_camera(
         obj_points: &Vector<Vector<Point3f>>,
         img_points: &Vector<Vector<Point2f>>,
@@ -198,6 +279,7 @@ impl CameraCalibrationTrait for CameraCalibration {
         let mut dst = Mat::default();
         calib3d::undistort(&img, &mut dst, camera_matrix, dist_coeffs, &new_camera_matrix)?;
 
+        CustomFile::create_out_dir(Some("circle_grid"));
         imgcodecs::imwrite(RESULT_IMG_PATH, &dst, &Vector::new())?;
         Ok(())
     }
