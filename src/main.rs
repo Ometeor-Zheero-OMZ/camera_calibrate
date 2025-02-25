@@ -40,13 +40,10 @@ const TEXT_COLOR: (f64, f64, f64, f64) = (0.0, 255.0, 0.0, 0.0); // GREEN
 
 fn main() -> opencv::Result<()> {
     File::create_out_dir();
-
     let start_time = Instant::now();
 
     let chessboard_size = Size::new(CHESSBOARD_SIZE.0, CHESSBOARD_SIZE.1);
-    let frame_size = Size::new(FRAME_WIDTH, FRAME_HEIGHT);
-    
-    let image_paths = File::get_image_paths("./img");
+    let image_paths = File::get_image_paths("./img/chessboard_dataset");
     let criteria = TermCriteria::new(
         (TermCriteria_Type::COUNT as i32) + (TermCriteria_Type::EPS as i32),
         CRITERIA_MAX_COUNT,
@@ -56,6 +53,7 @@ fn main() -> opencv::Result<()> {
     let (obj_points, img_points) =
         CameraCalibration::detect_chessboard_corners(&image_paths, chessboard_size, criteria)?;
 
+    let frame_size = Size::new(FRAME_WIDTH, FRAME_HEIGHT);
     let (camera_matrix, dist_coeffs, rvecs, tvecs) =
         CameraCalibration::calibrate_camera(&obj_points, &img_points, frame_size, criteria)?;
 
