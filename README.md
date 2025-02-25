@@ -1,4 +1,11 @@
 # Camera Calibration
+environment: Ubuntu (WSL2)
+
+## Setup
+Installing clang
+```bash
+sudo apt install -y clang cmake pkg-config libopencv-dev
+```
 
 ## Before
 
