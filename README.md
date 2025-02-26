@@ -1,16 +1,31 @@
-# Camera Calibration
+# Camera Calibrator
+
 environment: Ubuntu (WSL2)
 
 ## Setup
-Installing clang
+
+Installing dependencies
+
 ```bash
 sudo apt install -y clang cmake pkg-config libopencv-dev
 ```
 
-## Before
+## Commands
 
-![補正前](./img/calib04.jpeg)
+Simply, you can execute theses commands:
 
-## After
+```bash
+cargo run -- --calibrate chessboard
+```
 
-![補正後](./out/result.jpeg)
+```bash
+cargo run -- --calibrate symmetric
+```
+
+```bash
+cargo run -- --calibrate asymmetric
+```
+
+```bash
+cargo run -- --calibrate charuco
+```
