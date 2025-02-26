@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+clap = { version = "4.5.31", features = ["derive"] }
 opencv = { version = "0.94.2", features = ["imgproc", "calib3d", "highgui"] }
 rayon = "1.10.0"
 serde = { version = "1.0.218", features = ["derive"] }
