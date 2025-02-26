@@ -9,22 +9,17 @@ use opencv::{
     highgui,
     imgcodecs,
     imgproc,
-    prelude::*
+    prelude::*,
 };
 use rayon::prelude::*;
 
 use crate::{
-    file::File as CustomFile,
-    CORNER_SUB_PIX_WINDOW_HEIGHT,
-    CORNER_SUB_PIX_WINDOW_WIDTH,
-    CORNER_SUB_PIX_ZERO_ZONE,
+    file::CustomFile,
     GUI_WINDOW_HEIGHT,
     GUI_WINDOW_WIDTH,
-    RESULT_IMG_PATH,
     TEXT_COLOR,
     TEXT_FONT_SCALE,
     TEXT_POINT,
-    UNDISTORT_IMG_PATH,
     WAIT_KEY_DELAY,
     WINDOW_TITLE
 };
@@ -44,13 +39,19 @@ pub trait CameraCalibrationTrait {
         image_paths: &[std::path::PathBuf],
         chessboard_size: Size,
         criteria: core::TermCriteria,
+        read_image_cnt: &mut i32,
+        failed_read_image_path: &str,
+        corner_sub_pix_window_width: i32,
+        corner_sub_pix_window_height: i32,
+        corner_sub_pix_zero_zone: i32,
     ) -> opencv::Result<(Vector<Vector<Point3f>>, Vector<Vector<Point2f>>)>;
 
     /// 円グリッドのコーナー検出 & 精緻化
     fn detect_circle_grid(
         image_paths: &[std::path::PathBuf],
         pattern_size: Size,
-        read_image_cnt: &mut i32
+        read_image_cnt: &mut i32,
+        failed_read_image_path: &str
     ) -> opencv::Result<(Vector<Vector<Point3f>>, Vector<Vector<Point2f>>)>;
 
     /// カメラキャリブレーション
@@ -62,7 +63,7 @@ pub trait CameraCalibrationTrait {
     ) -> opencv::Result<(Mat, Mat, Vector<Mat>, Vector<Mat>)>;
 
     /// 画像の歪み補正
-    fn undistort_image(camera_matrix: &Mat, dist_coeffs: &Mat) -> opencv::Result<()>;
+    fn undistort_image(camera_matrix: &Mat, dist_coeffs: &Mat, undistort_image_path: &str, result_image_path: &str, output_directory_name: &str) -> opencv::Result<()>;
 
     /// 再投影誤差を計算
     fn compute_reprojection_error(
@@ -90,6 +91,11 @@ impl CameraCalibrationTrait for CameraCalibration {
         image_paths: &[std::path::PathBuf],
         chessboard_size: Size,
         criteria: core::TermCriteria,
+        read_image_cnt: &mut i32,
+        failed_read_image_path: &str,
+        corner_sub_pix_window_width: i32,
+        corner_sub_pix_window_height: i32,
+        corner_sub_pix_zero_zone: i32,
     ) -> opencv::Result<(Vector<Vector<Point3f>>, Vector<Vector<Point2f>>)> {
         let mut objp = Vector::<Point3f>::new();
         for i in 0..chessboard_size.height {
@@ -103,6 +109,8 @@ impl CameraCalibrationTrait for CameraCalibration {
     
         highgui::named_window(WINDOW_TITLE, highgui::WINDOW_NORMAL)?;
         highgui::resize_window(WINDOW_TITLE, GUI_WINDOW_WIDTH, GUI_WINDOW_HEIGHT)?;
+
+        let mut failed_images = Vec::new();
     
         for image_path in image_paths {
             let img = imgcodecs::imread(image_path.to_str().unwrap(), imgcodecs::IMREAD_COLOR)?;
@@ -126,8 +134,8 @@ impl CameraCalibrationTrait for CameraCalibration {
                 imgproc::corner_sub_pix(
                     &gray,
                     &mut refined_corners,
-                    Size::new(CORNER_SUB_PIX_WINDOW_WIDTH, CORNER_SUB_PIX_WINDOW_HEIGHT),
-                    Size::new(CORNER_SUB_PIX_ZERO_ZONE, CORNER_SUB_PIX_ZERO_ZONE),
+                    Size::new(corner_sub_pix_window_width, corner_sub_pix_window_height),
+                    Size::new(corner_sub_pix_zero_zone, corner_sub_pix_zero_zone),
                     criteria,
                 )?;
                 img_points.push(refined_corners);
@@ -137,6 +145,7 @@ impl CameraCalibrationTrait for CameraCalibration {
     
                 // Read each file and display the filename on the window
                 if let Some(filename) = image_path.file_name().and_then(|f| f.to_str()) {
+                    *read_image_cnt += 1;
                     let text = format!("{}", filename);
                     let org = core::Point::new(TEXT_POINT.0, TEXT_POINT.1);
                     let font_face = imgproc::FONT_HERSHEY_SIMPLEX;
@@ -148,17 +157,28 @@ impl CameraCalibrationTrait for CameraCalibration {
     
                 highgui::imshow(WINDOW_TITLE, &img_clone)?;
                 highgui::wait_key(WAIT_KEY_DELAY)?;
+            } else {
+                if let Some(filename) = image_path.file_name().and_then(|f| f.to_str()) {
+                    failed_images.push(filename.to_string());
+                }
             }
         }
     
+        println!("Detected {} images", read_image_cnt);
         highgui::destroy_all_windows()?;
+
+        if !failed_images.is_empty() {
+            let _ = CustomFile::create_output_json(failed_read_image_path, failed_images);
+        }
+
         Ok((obj_points, img_points))
     }
 
     fn detect_circle_grid(
         image_paths: &[std::path::PathBuf],
         pattern_size: Size,
-        read_image_cnt: &mut i32
+        read_image_cnt: &mut i32,
+        failed_read_image_path: &str
     ) -> opencv::Result<(Vector<Vector<Point3f>>, Vector<Vector<Point2f>>)> {
         let mut objp = Vector::<Point3f>::new();
         for i in 0..pattern_size.height {
@@ -169,6 +189,8 @@ impl CameraCalibrationTrait for CameraCalibration {
 
         let mut obj_points = Vector::<Vector<Point3f>>::new();
         let mut img_points = Vector::<Vector<Point2f>>::new();
+
+        let mut failed_images = Vec::new();
 
         highgui::named_window(WINDOW_TITLE, highgui::WINDOW_NORMAL)?;
         highgui::resize_window(WINDOW_TITLE, GUI_WINDOW_WIDTH, GUI_WINDOW_HEIGHT)?;
@@ -219,12 +241,20 @@ impl CameraCalibrationTrait for CameraCalibration {
                 highgui::imshow(WINDOW_TITLE, &img_clone)?;
                 highgui::wait_key(WAIT_KEY_DELAY)?;
             } else {
-                eprintln!("Circles grid not found in image: {:?}", image_path);
-            }        
+                if let Some(filename) = image_path.file_name().and_then(|f| f.to_str()) {
+                    failed_images.push(filename.to_string());
+                }
+            }      
         }
 
-        println!("Read {} images", read_image_cnt);
+        println!("Detected {} images", read_image_cnt);
         highgui::destroy_all_windows()?;
+
+        if !failed_images.is_empty() {
+            let _ = CustomFile::create_output_json(failed_read_image_path, failed_images);
+        }
+
+        println!("END");
         Ok((obj_points, img_points))
     }
 
@@ -260,8 +290,8 @@ impl CameraCalibrationTrait for CameraCalibration {
         Ok((camera_matrix, dist_coeffs, rvecs, tvecs))
     }
 
-    fn undistort_image(camera_matrix: &Mat, dist_coeffs: &Mat) -> opencv::Result<()> {
-        let img = imgcodecs::imread(UNDISTORT_IMG_PATH, imgcodecs::IMREAD_COLOR)?;
+    fn undistort_image(camera_matrix: &Mat, dist_coeffs: &Mat, undistort_image_path: &str, result_image_path: &str, output_directory_name: &str) -> opencv::Result<()> {
+        let img = imgcodecs::imread(undistort_image_path, imgcodecs::IMREAD_COLOR)?;
         let size = img.size()?;
         let new_camera_matrix = Mat::default();
         let mut roi = core::Rect::default();
@@ -279,8 +309,8 @@ impl CameraCalibrationTrait for CameraCalibration {
         let mut dst = Mat::default();
         calib3d::undistort(&img, &mut dst, camera_matrix, dist_coeffs, &new_camera_matrix)?;
 
-        CustomFile::create_out_dir(Some("circle_grid"));
-        imgcodecs::imwrite(RESULT_IMG_PATH, &dst, &Vector::new())?;
+        CustomFile::create_out_dir(Some(output_directory_name));
+        imgcodecs::imwrite(result_image_path, &dst, &Vector::new())?;
         Ok(())
     }
 
